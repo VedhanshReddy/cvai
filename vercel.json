@@ -1,8 +1,7 @@
 {
-    "functions": {
-      "api/chat.ts": {
-        "runtime": "edge"
-      }
+  "functions": {
+    "api/chat.ts": {
+      "runtime": "nodejs18.x"
     }
   }
-  
+}
