@@ -179,8 +179,8 @@ export default function Chat() {
     setTyping(true);
     setTypingText("");
   
-    const controller = new AbortController(); // 🔥 Create AbortController
-    setAbortController(controller); // Save it for Stop button
+    const controller = new AbortController();
+    setAbortController(controller);
   
     try {
       const activeChat = chats.find((c) => c.id === activeChatId);
@@ -206,53 +206,52 @@ export default function Chat() {
         console.log("Code confirmed, proceeding with message sending.");
       }
   
-      let data;
-
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          body: JSON.stringify({
-            prompt: input,
-            type: activeChat?.type || "normal",
-            code,
-          }),
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: controller.signal,
-        });
-      
-        if (!res.ok) {
-          const errorData = await res.json();
-          if (errorData.error?.includes("Mistral API error") || res.status === 500) {
-            alert("🚧 AI is currently being updated. Try again in a few minutes!");
-          } else {
-            alert(errorData.error || "Something went wrong!");
-          }
-          setTyping(false);
-          setTypingText("");
-          return;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: input,
+          type: activeChat?.type || "normal",
+          code,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
+  
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (errorData.error?.includes("Mistral API error") || res.status === 500) {
+          alert("🚧 AI is currently being updated. Try again in a few minutes!");
+        } else {
+          alert(errorData.error || "Something went wrong!");
         }
-      
-        data = await res.json();
-      
-      } catch (err: any) {
-        console.error("🔌 AI server offline:", err.message);
-        alert("🛠️ Our AI is currently offline. We’re doing some updates. Check back soon!");
         setTyping(false);
         setTypingText("");
         return;
       }
-      const fullResponse = data.response;
   
+      if (!res.body) {
+        alert("🛠️ AI is not responding. Please try again later!");
+        setTyping(false);
+        setTypingText("");
+        return;
+      }
+  
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
       let currentText = "";
-      for (let i = 0; i < fullResponse.length; i++) {
-        await new Promise((r) => setTimeout(r, 15));
-        currentText += fullResponse[i];
+  
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+  
+        const chunk = decoder.decode(value, { stream: true });
+        currentText += chunk;
         setTypingText(currentText);
       }
   
-      const botMsg: ChatMessage = { sender: "bot", text: fullResponse };
+      const botMsg: ChatMessage = { sender: "bot", text: currentText };
       setMessages((prev) => [...prev, botMsg]);
   
       await addDoc(collection(db, "users", user.uid, "chats", activeChatId, "messages"), {
@@ -264,7 +263,7 @@ export default function Chat() {
       await runTransaction(db, async (transaction) => {
         const counterRef = doc(db, "meta", "counter");
         const counterSnap = await transaction.get(counterRef);
-      
+  
         if (!counterSnap.exists()) {
           transaction.set(counterRef, { count: 1 });
         } else {
@@ -277,13 +276,14 @@ export default function Chat() {
         console.log("🛑 Bot response stopped by user.");
       } else {
         console.error("Send message failed:", error);
+        alert("🛠️ AI failed to respond. Please try again.");
       }
     }
   
     setTyping(false);
     setTypingText("");
-    setAbortController(null); // clear controller
-  };
+    setAbortController(null);
+  };  
   
 
   const createNewChat = async (type: "normal" | "max" = "normal") => {
