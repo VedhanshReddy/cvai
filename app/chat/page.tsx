@@ -179,8 +179,8 @@ export default function Chat() {
     setTyping(true);
     setTypingText("");
   
-    const controller = new AbortController();
-    setAbortController(controller);
+    const controller = new AbortController(); // 🔥 Create AbortController
+    setAbortController(controller); // Save it for Stop button
   
     try {
       const activeChat = chats.find((c) => c.id === activeChatId);
@@ -190,6 +190,7 @@ export default function Chat() {
         if (!code) {
           alert("Please enter the secret code.");
           setTyping(false);
+          setShowCodeModal(true);
           return;
         }
         if (code !== ENV_SECRET_CODE) {
@@ -206,52 +207,54 @@ export default function Chat() {
         console.log("Code confirmed, proceeding with message sending.");
       }
   
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          prompt: input,
-          type: activeChat?.type || "normal",
-          code,
-        }),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-      });
+      let data;
   
-      if (!res.ok) {
-        const errorData = await res.json();
-        if (errorData.error?.includes("Mistral API error") || res.status === 500) {
-          alert("🚧 AI is currently being updated. Try again in a few minutes!");
-        } else {
-          alert(errorData.error || "Something went wrong!");
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          body: JSON.stringify({
+            prompt: input,
+            type: activeChat?.type || "normal",
+            code,
+          }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+        });
+  
+        if (!res.ok) {
+          const errorData = await res.json();
+          if (errorData.error?.includes("Mistral API error") || res.status === 500) {
+            alert("🚧 AI is currently being updated. Try again in a few minutes!");
+          } else {
+            alert(errorData.error || "Something went wrong!");
+          }
+          setTyping(false);
+          setTypingText("");
+          return;
         }
+  
+        data = await res.json();
+  
+      } catch (err: any) {
+        console.error("🔌 AI server offline:", err.message);
+        alert("🛠️ Our AI is currently offline. We’re doing some updates. Check back soon!");
         setTyping(false);
         setTypingText("");
         return;
       }
   
-      if (!res.body) {
-        alert("🛠️ AI is not responding. Please try again later!");
-        setTyping(false);
-        setTypingText("");
-        return;
-      }
+      const fullResponse = data.response;
   
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let currentText = "";
-  
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-  
-        const chunk = decoder.decode(value, { stream: true });
-        currentText += chunk;
+      for (let i = 0; i < fullResponse.length; i++) {
+        await new Promise((r) => setTimeout(r, 15));
+        currentText += fullResponse[i];
         setTypingText(currentText);
       }
   
-      const botMsg: ChatMessage = { sender: "bot", text: currentText };
+      const botMsg: ChatMessage = { sender: "bot", text: fullResponse };
       setMessages((prev) => [...prev, botMsg]);
   
       await addDoc(collection(db, "users", user.uid, "chats", activeChatId, "messages"), {
@@ -276,14 +279,14 @@ export default function Chat() {
         console.log("🛑 Bot response stopped by user.");
       } else {
         console.error("Send message failed:", error);
-        alert("🛠️ AI failed to respond. Please try again.");
       }
     }
   
     setTyping(false);
     setTypingText("");
-    setAbortController(null);
-  };  
+    setAbortController(null); // clear controller
+  };
+  
   
 
   const createNewChat = async (type: "normal" | "max" = "normal") => {
