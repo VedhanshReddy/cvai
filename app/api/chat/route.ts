@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     ];
 
     // ✅ Call Mistral API (Ollama endpoint)
-    const res = await fetch('https://b410-202-21-42-222.ngrok-free.app/api/chat', {
+    const res = await fetch('https://6b52-2401-4900-8fce-5bb5-342e-5239-9725-5575.ngrok-free.app/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
